@@ -1,0 +1,444 @@
+---
+title: "MA 615 Final Project - Boston Airbnb"
+author: "Shiyu Zhang"
+date: "November, 2018"
+output:
+     pdf_document:
+         latex_engine: xelatex
+ 
+---
+#A. Abstract
+
+In this project, I chose the Airbnb dataset from Boston Area. The methodology of this final project is to test the reivews and price variables to see if they follow the Benford Law and explore further details of the output. In addition, this project also includes Modelings, EDA, Data Visualizations, Leaflet Mapping and Shiny Dashboard Building. 
+
+
+#B. Project Background 
+
+I have been using Airbnb for over three years and it has become a popular way of travelling. I have witness Airbnb develop from an unknown website to the most popular travelling website during the past several years. Many people choose Airbnb instead of hotels not only for its lower price and convenient location, but also for its humanness – travelers are able to make connections with people from all around the world. What’s more, travelers are provided with more unique options compare to hotels - houses, condos, apartments, castles, houseboats, tree houses, barns, mansions, even caves! Therefore, these unique properties of Airbnb inspired me to explore more about it. For example, what the factors may have an impact on the ratings, or, what is the relationship between the occupancy rate and the neighborhood of an Airbnb apartment, etc. 
+
+#C. Dataset Source
+
+http://tomslee.net/airbnb- data-collection-get-the-data
+
+#D. Data Cleaning 
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(esquisse)
+library(ggplot2)
+library(sqldf)
+library(tidyr)
+library(data.table)
+library(arm)
+library(knitr)
+library(plyr)
+library(leaflet)
+library(webshot)
+#import data 
+Boston.airbnb<-read.csv("tomslee_airbnb_boston_0649_2016-11-21.csv")
+# replace all N/A with 0 
+Boston.airbnb[is.na(Boston.airbnb)] <- 0
+# Remove unrelevant columns
+Boston.data<-Boston.airbnb[, c(-4,-9)]
+#remove 0 review properties
+Boston.data<-filter(Boston.data, reviews >0)
+Boston.data<-filter(Boston.data, overall_satisfaction >0)
+```
+
+
+# E. Dataset Structure & Overview 
+After the data cleaning process, the new dataset’s structure is as follows: 
+
+
+## Properties Location Overview
+
+```{r setup, inclue=FALSE}
+knitr::opts_chunk$set(echo = TRUE,out.width="0.9\\linewidth",dev="png",fig.align  = 'center')
+
+pal <- colorQuantile(
+  palette = "YlOrRd",
+  domain = Boston.data$price
+)
+leaflet(Boston.data) %>% addTiles() %>%
+  addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
+    popup = ~price, radius = 50,
+    color = ~pal(price), fillOpacity = 1)
+
+
+```
+
+
+## Room type overview
+
+```{r, echo=FALSE}
+table(Boston.data$room_type)
+rp<-ggplot(data = Boston.data) +
+  aes(x = room_type) +
+  geom_bar(fill = '#0c4c8a') +
+  labs(title = 'Overview of Room Type',
+    x = 'Room type',
+    y = 'Count ') +
+  theme_minimal()
+print(rp)
+```
+
+From the output, we can see that in Boston area, entire home/apt is the most common type of properties for rent on the website, then is the private room. Shared room is the least common way on the website.
+
+## Check ratings and number of reviews
+
+```{r, echo=FALSE}
+hist(Boston.data$reviews, main = "Distribution of Reviews", xlab = "Number of reviews")
+
+
+
+
+
+
+
+hist(Boston.data$overall_satisfaction, main = "Distribution of Ratings", xlab = "Ratings")
+
+
+
+
+
+ecdf.rev<-ecdf(Boston.data$reviews) 
+ecdf.rev(50)
+max(Boston.data$reviews)
+```
+
+From the histogram for the distribution of ratings (overall_satisfaction), we can see that most of the
+ratings for Airbnb properties in Boston are above 4.0, the data shows right skewness. The distribution of reviews shows a left skewness.
+From the frequency table we can see that the majority number of reviews are less than 50 in Boston area. There are 3127 rooms in our data after cleaning, from the output, 84.9% of total Airbnb rooms have less than 50 reviews, while the maximum reviews for a room is 421.
+
+
+#F. Data Visualization 
+
+## Visualize relationship between overall satisfactions and number of reviews
+
+```{r, echo=FALSE}
+ggplot(data=Boston.data, aes(x=overall_satisfaction, y=reviews))+geom_jitter()+xlab("Ratings")+ylab("Reviews")
+
+```
+
+Based on these output, we can tell that in general, higher ratings tend to have more reviews.
+
+
+## Distribution of room type 
+
+```{r, echo=FALSE}
+p <- ggplot(data=Boston.data, aes(x=factor(1), fill = factor(room_type))) + geom_bar(width = 1)
+pp1 <- p + coord_polar(theta = "y") + ggtitle("Room Type Distribution in Boston") + labs(x="Room Type",y="Count") + theme(plot.title = element_text(size=12))
+print(pp1)
+```
+
+
+As we can tell from the pie chart, the entire home/apt has the majority proportion of the whole room types. Private room
+comes the next, and shared room has the least proportion among all the room types.
+
+## Explore Relationship Between Price per Person and Ratings & Room type
+
+Calculate Price per Person
+
+```{r}
+Boston.data$priceperperson <- (Boston.data$price)/(Boston.data$accommodates)
+a1 <- aggregate( priceperperson ~ room_type+overall_satisfaction, Boston.data, mean )
+a1 <- as.data.frame(a1)
+names(a1) <- c("room_type","ratings","priceperperson")
+ggplot(data=a1,aes(x=priceperperson,y=ratings))+geom_line()+facet_wrap(.~room_type)
+ggplot(data=a1,aes(x=ratings,y=priceperperson))+geom_bar(stat="identity")+facet_wrap(.~room_type)
+kable(a1, caption = "Average Price by Room Type")
+
+
+```
+
+From the two output, we can tell that for different room type, for example, for entire home/apt, the most ratings are 3.5. For private room, ratings 3 is the most common one and ro the shared room, ratings 4 is more common. So we can tell from the graph that ratings are somehow related with the room type, i will explore further later in the model part.
+
+```{r, echo=FALSE}
+ggplot(data=Boston.data, aes(x=priceperperson))+
+geom_histogram()+facet_wrap(~neighborhood) + ggtitle("Price per Person in Different Neighborhood")
+```
+
+From the graph, we can see that the price in majority neighborhood ranges from 50 to 100 dollars per person, some preperties in Back Bay could be a little bit more expensive. Most of the properties in Jamaica Plain and Dorchester are 80 dollars per person. 
+
+
+Now we want to explore the relationship between the ratings and properties' location.
+
+## Neighborhood overview
+
+```{r, echo=FALSE,r,message=FALSE,warning=FALSE}
+
+df= count(Boston.data, 'neighborhood')
+pic1 <- ggplot(df, aes(x = reorder(neighborhood, freq), y = freq,fill=neighborhood)) +
+         geom_bar(stat = "identity") +
+  labs(title = 'Overview of Neighborhood',
+    x = 'Neighborhood',
+    y = 'Count ') +
+  theme_minimal()+coord_flip()
+ theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+print(pic1)
+
+```
+
+
+From this bar plot and r output, we can see that the top 5 neighborhood for rent on Airbnb in Boston area are Jamaica Plain, Back Bay, Allston, Dorchester and Beacon Hill. On contrast, Longwood, Leather District, Bay Village, West End and Roxbury are the least popular neighborhood for Airbnb in Boston area.
+We can see that the ratings are highly related to the neighborhood of the properties,
+in order to explore further about reasons behind it, i introduced another dataset - Boston crime incident data.
+dataset source : https://data.boston.gov/dataset/ crime-incident-reports-august-2015-to-date-source-new-system.
+ 
+```{r,message=FALSE,warning=FALSE}     
+crime<-read.csv("crime_incident_reports.csv")
+
+# replace district code with names
+distrName = c(
+A1 = 'Downtown',
+A15= 'Charlestown',
+A7= 'East Boston',
+B2= 'Roxbury',
+B3= 'Mattapan',
+C6= 'South Boston',
+C11= 'Dorchester',
+D4= 'South End',
+D14= 'Brighton',
+E5= 'West Roxbury',
+E13= 'Jamaica Plain',
+E18= 'Hyde Park',
+HTU= 'Human Traffic Unit'
+)
+crime$ReptDistrName = as.factor(distrName[as.character(crime$DISTRICT)])
+crime$DISTRICT = NULL
+
+data.crime=na.omit(crime)
+dff2= count(data.crime, 'ReptDistrName')
+
+pic2 <- ggplot(dff2, aes(x = reorder(ReptDistrName, freq), y = freq, fill = ReptDistrName)) +
+         geom_bar(stat = "identity") +
+  labs(title = 'Overview of Neighborhood',
+    x = 'Neighborhood',
+    y = 'Count ') +
+  theme_minimal()+coord_flip()
+ theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+print(pic2)
+
+```
+
+Compared to the two graphs above, we can see that ratings is highly related to the neighborhood of the 
+property, more specific, in the neighborhood where the crime rates are lower, the ratings tends to be higher."
+
+
+To sum up, we can say that ratings is highly related to number of reviews, price , accomodates, minimum stays
+and the location of the property. It has a moderate relationship with the room type."
+
+
+# G. EDA
+
+Prior to the application for multilevel model, I think doing some initial EDA is helpful for 
+a better understanding of relationship between independent variables and dependents variables.
+
+## 1.Distribution of ratings in different districts
+```{r, echo=FALSE}
+
+ggplot(data=Boston.data, aes(x=overall_satisfaction))+
+geom_histogram()+facet_wrap(~neighborhood) + ggtitle("Weighted Rating distribution per district")
+
+```
+
+As we can see from the output, it is more clear that Bay Village,Leather District, Longwood Medical area,
+west end and west roxbury have very few reviews or ratings compared to the crime plot i showed in the
+previous part. we can say that the area where has more crime tend to have few ratings/ reviews.
+On the other hand, Allston, Back Bay, Jamacia Plain and South End have most ratings/ reviews.
+
+### 2. Density Plot
+```{r}
+
+ggplot(data=Boston.data, aes(x=reviews, fill=neighborhood))+geom_density()+ ggtitle(" Reviews Density Plot by Neighborhoods")
+
+
+
+ggplot(data=Boston.data, aes(x=overall_satisfaction, fill=neighborhood))+geom_density()+ ggtitle(" Ratings Density Plot by Neighborhoods")
+
+
+```
+we can see that the distribution of ratings and number of reviews are different between neighborhoods.
+
+
+
+###3. Relationship between accomodates and room type
+
+
+```{r, echo=FALSE}
+ggplot(data=Boston.data, aes(x=accommodates, fill=room_type))+geom_bar(position = "fill")+ ggtitle("Accommodates and Room Type")
+```
+
+
+
+
+###4. Relationship between mininum stay dates and room type
+
+```{r, echo=FALSE}
+ggplot(data=Boston.data, aes(x=minstay, fill=room_type))+geom_bar(position = "fill")+ ggtitle("Minstays and Room Type")
+```
+
+
+
+###5. relationship between prices per night versus room type
+
+```{r, echo=FALSE}
+ggplot(data=Boston.data, aes(x=price, fill=room_type))+geom_histogram()+ ggtitle("Price and Room Type")
+```
+
+
+# Benford Analysis for Price and Review Variables
+```{r}
+
+library(benford.analysis)
+library(BenfordTests)
+
+```
+
+## 1. Benford Analysis for Reviews
+```{r}
+
+#Get the the statistics of the first TWO digits of a benford object
+ben_review1 <- benford(Boston.data$reviews, number.of.digits=2)
+ben_review1
+plot(ben_review1)
+```
+
+The graph shows that the majority of the data for reviews match the expected trend expect several parts. For the example, that the lead digit of 3 occurred more than 4 times as often as is expected, this is the situation for leading digits of 4,5,6,7 and 8. I think that data spikes do not necessarily signal underlying problems such as fraud, but they do alert to the possibility of such problems. 
+I have check the reviews policy for Airbnb on the website, and I found that a good number of reviews can help the host's ratings improve and thus, land more bookings. So it is critical factor in the Airbnb owner valuation system, the potential reason why the leading digits such as 4,5,6,7 and 8 are pretty high is that Airbnb is very cautious about the views, and they had a full control of the number of views from going too much. I will explore the reason behind more in details in later analysis.
+
+
+```{r}
+
+# Get MAD and Distortion Factor 
+MAD(ben_review1)
+dfactor(ben_review1)
+
+#Get main stats from the object
+mantissa(ben_review1)
+
+# Get the Mantissa Arc test of the object
+marc(ben_review1)
+
+#Gets the the statistics of the first ONE digits of a benford object
+
+ben_review2 <- benford(Boston.data$reviews, number.of.digits=1)
+ben_review2
+plot(ben_review2)
+```
+From the output for the one digits test, we can see that the lead digit of 2 occurred only about 2/3 of as often as is expected, while the lead digit of 3 and 4 appeared much more often. I think it is common that most of the Airbnb properties have 30s or 40s reviews because unless the pretty popular ones.
+
+```{r}
+
+#Probability of a digit sequence 
+prob.dig <- c()
+for (i in 1:20){
+  prob.dig[i] <- p.these.digits(i)}
+prob.dig <- as.vector(prob.dig)
+
+#Probability of a digit appear on the n-th position  
+p.this.digit.at.n(2,1) #probability of 2 appear on the first position
+
+#Find out suspect observations
+suspects <- getSuspects(ben_review1, Boston.data)
+
+#Creates a data frame with the first digits and the differences from Benford’s Law in decreasing order
+suspectsTable(ben_review1, by="absolute.diff")
+
+```
+From the suspects table output, we can see that the digits 2,3,1 have greater deviation from the expected distribution.
+
+```{r}
+#Chi-sqaure test 
+chisq(ben_review1) 
+```
+The chi-square test is a statistical test that measures how well the data distribution from a sample matches a hypothetical distribution dictated by theory. Based on the chisq output, the p-value is small so we reject null hypothesis, which means that the distances between data points and benford points are large.
+
+### BenfordTests Package for Reviews
+```{r}
+#JP Sqaure test
+jpsq.benftest(x=Boston.data$reviews,digits = 2, pvalmethod = "simulate", pvalsims = 10000) 
+#Joenssen’s JP-square Test for Benford’s Law 
+#The result signifys that the square correlation between reviews and pbenf(2) is not zero.
+# Euclidean Distance Test for Benford’s Law
+edist.benftest(Boston.data$reviews)
+# The p-value is smaller than 0.05 so that we reject the null hypothesis. Therefore, the goodness-of-fit test based on the Euclidean distance between the first digits' distribution and Benford's distribution shows the data does not conform to Benford's law very well.
+
+#rbenf
+rbenf(10) #10 observations
+```
+
+
+## 2. Benford Analysis for Price
+```{r}
+
+#Get the the statistics of the first TWO digits of a benford object
+ben_price1 <- benford(Boston.data$price, number.of.digits=2)
+ben_price1
+plot(ben_price1)
+```
+
+The graph shows that the majority of the data for price doesn't perfectly match the expected trends. For the example, that the lead digit of 10 or 23 occurred more than twice as often as is expected, however the digits 36 was only a half of the expected values. I think that data spikes do not necessarily signal underlying problems such as fraud, but they do alert to the possibility of such problems. I think that the avg price of one stay in Boston area is around 100 dollars to 200 dollars,
+that is the reason why spikes occurs on the digits 10 and 23. 
+
+
+```{r}
+
+# Get MAD and Distortion Factor 
+MAD(ben_price1)
+dfactor(ben_price1)
+
+#Get main stats from the object
+mantissa(ben_price1)
+
+# Get the Mantissa Arc test of the object
+marc(ben_price1)
+
+#Gets the the statistics of the first ONE digits of a benford object
+
+ben_price2 <- benford(Boston.data$price, number.of.digits=1)
+ben_price2
+plot(ben_price2)
+```
+From the output for the one digits test, we can see that the lead digit of 3 and 4 occurred only about half of as often as is expected. I think it is becasue both cheaper ones and luxury ones are popular, the 300 to 400 dollars are kind of in the middle, the overal quality maybe not be as good as the expensive ones but the price is more expensive than the cheaper ones. 
+
+```{r}
+#Probability of a digit sequence 
+prob.dig <- c()
+for (i in 1:20){
+  prob.dig[i] <- p.these.digits(i)}
+prob.dig <- as.vector(prob.dig)
+
+#Probability of a digit appear on the n-th position  
+p.this.digit.at.n(1,1) #probability of 1 appear on the first position
+
+#Find out suspect observations
+suspects <- getSuspects(ben_price1, Boston.data)
+
+#Creates a data frame with the first digits and the differences from Benford’s Law in decreasing order
+suspectsTable(ben_price1, by="absolute.diff")
+
+#Chi-sqaure test 
+chisq(ben_price1) 
+# Based on the chisq output, the p-value is small so we reject null hypothesis, which means that the distances between data points and benford points are large.
+```
+
+### BenfordTests Package for Price
+```{r}
+#JP Sqaure test
+jpsq.benftest(x=Boston.data$price,digits = 2, pvalmethod = "simulate", pvalsims = 10000) 
+#Joenssen’s JP-square Test for Benford’s Law 
+#The result signifys that the square correlation between signifd(data$Amount,2) and pbenf(2) is not zero.
+# Euclidean Distance Test for Benford’s Law
+edist.benftest(Boston.data$price)
+# The p-value is smaller than 0.05 so that we reject the null hypothesis. Therefore, the goodness-of-fit test based on the Euclidean distance between the first digits' distribution and Benford's distribution shows the data does not conform to Benford's law very well.
+
+#rbenf
+rbenf(10) #10 observations
+```
+
+# Conclusion
+
+In conclusion, we can say that the price and reviews in Boston Airbnb doesn't perfectly follow the Benford Law. However, it follows the trend in general.  Accomodates and ratings have positive effect on the price, other variables have negative effect. Among all the variables, room type has the most significant effect on the price on Airbnb because it would cost a lot more when it comes to entire house/ apt than shared room or private room. Price, accomodates and neighborhood are 
+the major factors that may influence the ratings on Airbnb. These all make sense since the neighborhood is related to crime rate in the area, properties in a nice place tend to have more high ratings. I think these are all useful points for Airbnb users or owners to know about. 

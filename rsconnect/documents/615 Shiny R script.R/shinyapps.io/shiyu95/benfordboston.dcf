@@ -1,0 +1,13 @@
+name: benfordboston
+title: Benfordboston
+username:
+account: shiyu95
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 614359
+bundleId: 1756436
+url: https://shiyu95.shinyapps.io/benfordboston/
+when: 1544561697.20977
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|11113ww.R|615 final project .Rmd|615 ppt .pptx|615 Shiny.Rmd|615_final_project_.pdf|acs2015_census_tract_data.csv|Benford Group Project.Rmd|googleplaystore.csv|measurements.csv|tomslee_airbnb_new_york_1438_2017-07-12.csv|new_york
